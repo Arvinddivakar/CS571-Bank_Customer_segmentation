@@ -1,0 +1,687 @@
+---
+title: "Untitled"
+author: "Arvind Divakar"
+date: "2023-11-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(cluster)
+library(factoextra)
+library(dbscan)
+#library(kneed)
+
+```
+
+```{r}
+data <- read.csv("bank_transactions.csv")
+data
+```
+
+```{r}
+dimensions <- dim(data)
+cat("Number of rows:", dimensions[1], "\n")
+cat("Number of columns:", dimensions[2], "\n")
+```
+
+```{r}
+str(data)
+
+```
+
+```{r}
+summary(data)
+```
+
+```{r}
+na_count <- sapply(data, function(x) sum(is.na(x) | is.nan(x)))
+print(na_count)
+```
+
+```{r}
+duplicated_rows <- data[duplicated(data), ]
+print(duplicated_rows)
+```
+
+No duplicates
+
+```{r}
+check <- function(df) {
+  l <- list()
+  
+  columns <- colnames(df)
+  
+  for (col in columns) {
+    dtypes <- class(df[[col]])
+    nunique <- length(unique(df[[col]]))
+    sum_null <- sum(is.na(df[[col]]))
+    
+    l[[col]] <- c(col, dtypes, nunique, sum_null)
+  }
+  
+  df_check <- as.data.frame(t(do.call(rbind, l)))
+  colnames(df_check) <- c('column', 'dtypes', 'nunique', 'sum_null')
+  
+  return(df_check)
+}
+
+# Assuming 'data' is your data frame
+check(data)
+
+```
+
+```{r}
+gender_counts <- table(data$CustGender)
+print(gender_counts)
+```
+
+```{r}
+data <- data[!(data$CustGender %in% c('T')), ]
+```
+
+```{r}
+dim(data)
+```
+
+```{r}
+data
+```
+
+```{r}
+install.packages("lubridate")
+```
+
+```{r}
+library('lubridate')
+# Assuming 'data' is your data frame
+data$CustomerDOB <- as.Date(data$CustomerDOB,tryFormats = c("%d/%m/%Y"))
+data$TransactionDate <- as.Date(data$TransactionDate,tryFormats = c("%d/%m/%Y"))
+# Assuming 'data' is your data frame
+data$CustomerAge <- ifelse(year(data$CustomerDOB) > 16,
+                            100 - year(data$CustomerDOB) + year(data$TransactionDate),
+                            year(data$TransactionDate) - year(data$CustomerDOB))
+
+```
+
+```{r}
+data
+```
+
+```{r}
+min_age <- max(data$CustomerAge, na.rm = TRUE)
+print(min_age)
+```
+
+```{r}
+hist(data$CustomerAge, col = "skyblue", main = "Customer Age Histogram", xlab = "Customer Age", ylab = "Frequency")
+
+```
+
+```{r}
+data <- subset(data, CustomerAge > 0)
+```
+
+```{r}
+hist(data$CustomerAge, col = "skyblue", main = "Customer Age Histogram", xlab = "Customer Age", ylab = "Frequency")
+
+```
+
+```{r}
+data$CustAccountBalance <- ifelse(is.na(data$CustAccountBalance),
+                                   ave(data$CustAccountBalance, data$CustLocation, FUN = function(x) mean(x, na.rm = TRUE)),
+                                   data$CustAccountBalance)
+```
+
+```{r}
+na_count <- sapply(data, function(x) sum(is.na(x)))
+print(na_count)
+```
+
+```{r}
+data <- na.omit(data[data$CustAccountBalance != "", ])
+```
+
+```{r}
+na_count <- sapply(data, function(x) sum(is.na(x)))
+print(na_count)
+```
+
+```{r}
+hist(data$CustAccountBalance, col = "skyblue", main = "Customer Account Balance Histogram", xlab = "Customer Account Balance", ylab = "Frequency")
+hist(data$TransactionAmount..INR., col = "skyblue", main = "Transaction Amount Histogram", xlab = "Transaction Amount", ylab = "Frequency")
+```
+
+```{r}
+# Assuming 'data' is your data frame
+boxplot(data$CustAccountBalance, main = "Box Plot of CustAccountBalance", ylab = "CustAccountBalance", col = "skyblue")
+ggplot(data, aes(y = CustAccountBalance)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  labs(title = "Box Plot of CustAccountBalance", y = "CustAccountBalance") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(data, aes(y = CustomerAge)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  labs(title = "Box Plot of CustAccountBalance", y = "CustAccountBalance") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(data, aes(y = TransactionAmount..INR.)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  labs(title = "Box Plot of TransactionAmount..INR.", y = "TransactionAmount..INR.") +
+  theme_minimal()
+```
+
+```{r}
+# Assuming 'data' is your data frame
+labels <- names(table(data$CustGender))
+values <- as.vector(table(data$CustGender))
+explode <- c(0.1, 0)
+
+pie(values, labels = labels, explode = explode, main = "Pie Chart of CustGender", col = c("skyblue", "lightcoral"))
+
+```
+
+```{r}
+data <- na.omit(data[data$CustGender != "", ])
+
+unique(data$CustGender)
+dim(data)
+```
+
+```{r}
+# Assuming 'data' is your data frame
+install.packages(dplyr)
+library(dplyr)
+
+# Group by CustGender and calculate mean TransactionAmount
+mean_transaction <- data %>%
+  group_by(CustGender) %>%
+  summarize(mean_transaction = mean(`TransactionAmount..INR.`, na.rm = TRUE))
+
+# Bar plot
+barplot(height = mean_transaction$mean_transaction, 
+        names.arg = mean_transaction$CustGender,
+        col = c("red", "green"),
+        main = "Mean Transaction Amount by CustGender",
+        xlab = "CustGender",
+        ylab = "Mean Transaction Amount (INR)",
+        border = "black")
+
+```
+
+```{r}
+mean_balance <- data %>%
+  group_by(CustGender) %>%
+  summarize(mean_balance = mean(CustAccountBalance, na.rm = TRUE))
+
+# Bar plot
+barplot(height = mean_balance$mean_balance, 
+        names.arg = mean_balance$CustGender,
+        col = c("pink", "violet"),
+        main = "Mean Customer Account Balance by CustGender",
+        xlab = "CustGender",
+        ylab = "Mean Customer Account Balance",
+        border = "black")
+```
+
+```{r}
+data$TransactionMonth <- month(data$TransactionDate)
+data$TransactionMonthName <- month(data$TransactionDate, label = TRUE)
+data$TransactionDay <- day(data$TransactionDate)
+data$TransactionDayName <- weekdays(data$TransactionDate)
+```
+
+```{r}
+ggplot(data, aes(x = TransactionMonthName, y = TransactionAmount..INR., fill = CustGender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("F"="orange", "M"="blue")) +
+  labs(title = "Monthly Comparison of Spending Habits of Male & Female Customers",
+       x = "Transaction Month",
+       y = "Transaction Amount (INR)") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", color = "navy", size = 12, hjust = 0.5, margin = margin(b = 30)))
+```
+
+```{r}
+filtered_data <- data[complete.cases(data$TransactionDayName, data$TransactionAmount), ]
+
+# Create a ggplot bar plot
+ggplot(filtered_data, aes(x = data$TransactionDayName, y = data$TransactionAmount..INR., fill = CustGender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("orange", "blue")) +
+  labs(title = "Weekday-Wise Comparison of Spending Habits of Male & Female Customers",
+       x = "Transaction Day",
+       y = "Transaction Amount (INR)") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", color = "navy", size = 12, hjust = 0.5, margin = margin(b = 30)))
+
+```
+
+```{r}
+ggplot(data, aes(x = data$TransactionMonthName, y = data$CustAccountBalance, fill = CustGender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("orange", "blue")) +
+  labs(title = "Monthly Comparison of Account Balances of Male & Female Customers",
+       x = "Transaction Month",
+       y = "CustAccountBalance") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", color = "sienna", size = 12, hjust = 0.5, margin = margin(b = 30)))
+```
+
+```{r}
+ggplot(data, aes(x = data$CustomerAge, y = data$CustAccountBalance, fill = data$CustomerAge)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "yellow", high = "green") +
+  labs(title = "CustAccountBalance vs. Age",
+       x = "Age",
+       y = "CustAccountBalance") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(data, aes(x = data$CustomerAge, y = data$TransactionAmount..INR., fill = data$CustomerAge)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "yellow", high = "green") +
+  labs(title = "Transaction Amount vs. Age",
+       x = "Age",
+       y = "TransactionAmount") +
+  theme_minimal()
+```
+
+```{r}
+data$TransactionDate1 <- data$TransactionDate
+data$TransactionDate2 <- data$TransactionDate
+```
+
+```{r}
+
+RMF_data <- data %>%
+  group_by(CustomerID) %>%
+  summarize(
+    TransactionCount = n(),
+    CustGender = first(CustGender),
+    CustLocation = first(CustLocation),
+    CustAccountBalance = mean(CustAccountBalance, na.rm = TRUE),
+    TransactionAmountMean = mean(TransactionAmount..INR., na.rm = TRUE),
+    CustomerAgeMax = max(CustomerAge),
+    TransactionDate2Max = max(TransactionDate2),
+    TransactionDate1Min = min(TransactionDate1),
+    TransactionDateMedian = median(TransactionDate)
+  )
+
+RMF_data <- as.data.frame(RMF_data)
+```
+
+```{r}
+dim(RMF_data)
+```
+
+```{r}
+# Drop the "CustomerID" column
+RMF_data <- RMF_data %>%
+  select(-CustomerID)
+
+# Convert "TransactionDate2" and "TransactionDate1" to Date class
+RMF_data$TransactionDate2 <- as.Date(RMF_data$TransactionDate2)
+RMF_data$TransactionDate1 <- as.Date(RMF_data$TransactionDate1)
+
+# Create the "Recency" column
+RMF_data$Recency <- as.character(RMF_data$TransactionDate2 - RMF_data$TransactionDate1)
+
+# Print the head of the data frame
+head(RMF_data)
+```
+
+```{r}
+# Extract numerical values from "Recency" using regex
+RMF_data <- RMF_data %>%
+  mutate(Recency = as.integer(gsub("\\D", "", Recency)))
+
+# Print the head of the data frame
+head(RMF_data)
+```
+
+```{r}
+RMF_data <- RMF_data %>%
+  mutate(Recency = ifelse(Recency == 0, 1, Recency))
+
+# Print the head of the data frame
+head(RMF_data)
+```
+
+```{r}
+RMF_data <- select(RMF_data, -TransactionDate1,-TransactionDate2,-TransactionDate2Max, -TransactionDate1Min)
+RMF_data
+```
+
+```{r}
+RMF_data <- rename(RMF_data, Frequency = TransactionCount)
+
+```
+
+```{r}
+head(RMF_data)
+```
+
+```{r}
+cols <- c('Frequency', 'CustAccountBalance', 'TransactionAmountMean', 'CustomerAgeMax', 'Recency')
+
+lower_list <- vector("numeric", length(cols))
+upper_list <- vector("numeric", length(cols))
+num_list <- vector("numeric", length(cols))
+perc_list <- vector("numeric", length(cols))
+
+for (i in seq_along(cols)) {
+  Q1 <- quantile(RMF_data[[cols[i]]], 0.25)
+  Q3 <- quantile(RMF_data[[cols[i]]], 0.75)
+  IQR <- Q3 - Q1
+  lower <- Q1 - 1.5 * IQR
+  upper <- Q3 + 1.5 * IQR
+  
+  # Calculate number of outliers
+  num <- sum(RMF_data[[cols[i]]] < lower | RMF_data[[cols[i]]] > upper)
+  
+  # Calculate percentage of outliers
+  perc <- (num / nrow(RMF_data)) * 100
+  
+  lower_list[i] <- lower
+  upper_list[i] <- upper
+  num_list[i] <- num
+  perc_list[i] <- round(perc, 2)
+}
+
+# Create a data frame for the results
+outliers_df <- data.frame(lower = lower_list, upper = upper_list, outliers = num_list, Perc = perc_list, row.names = cols)
+
+outliers_df
+```
+
+```{r}
+RMF_data <- select(RMF_data,-CustGender,-CustLocation,-TransactionDateMedian)
+RMF_data
+```
+
+```{r}
+correlation = cor(RMF_data)
+
+```
+
+```{r}
+library(corrplot)
+corrplot(correlation, method = "color")
+
+```
+
+```{r}
+dim(RMF_data)
+```
+
+```{r}
+RMF_scaled <- RMF_data
+
+# Min-Max scaling for "Frequency", "Recency"
+RMF_scaled[c("Frequency", "Recency")] <- lapply(RMF_scaled[c("Frequency", "Recency")], function(x) (x - min(x)) / (max(x) - min(x)))
+
+# Standard Scaling for "CustAccountBalance", "TransactionAmountMean", "CustomerAgeMax"
+RMF_scaled[c("CustAccountBalance", "TransactionAmountMean", "CustomerAgeMax")] <- scale(RMF_scaled[c("CustAccountBalance", "TransactionAmountMean", "CustomerAgeMax")])
+
+# Print the head of the scaled data frame
+head(RMF_scaled)
+```
+
+```{r}
+
+```
+
+```{r}
+dim(RMF_scaled)
+```
+
+```{r}
+
+set.seed(69)  # Set seed for reproducibility
+RMF_scaled <- RMF_scaled[sample(nrow(RMF_scaled), 10000, replace = TRUE), , drop = TRUE]
+
+# Print the head of the sampled data frame
+RMF_scaled
+```
+
+```{r}
+library(stats)
+
+# Fit PCA
+trial_pca <- prcomp(RMF_scaled[, -1], center = TRUE, scale = TRUE)
+
+# Extract the explained variance ratios
+explained_variance_ratio <- trial_pca$sdev^2 / sum(trial_pca$sdev^2)
+
+# Plot explained variance ratio
+plot(explained_variance_ratio, type = 'o', main = 'Explained Variance Ratio as Function of PCA Components',
+     ylab = 'Explained Variance Ratio', xlab = 'Components')
+```
+
+```{r}
+RMF_pca <- prcomp(RMF_scaled[, -1], center = TRUE, scale = TRUE, rank. = 4)
+
+# Extract the principal components
+reduced_features <- as.data.frame(RMF_pca$x[, 1:4])
+colnames(reduced_features) <- c('P1', 'P2', 'P3','P4')
+```
+
+```{r}
+# Assuming 'data_scaled' is your data frame
+set.seed(42)  # Set seed for reproducibility
+
+# KMeans algorithm settings
+kmeans_set <- list(init = "random", nstart = 25, iter.max = 300)
+
+# Initialize vector for storing Sum of Squared Distances (SSD)
+ssd <- numeric()
+
+# Range of cluster numbers
+range_n_clusters <- 2:11
+
+# Loop through different numbers of clusters
+for (num_clusters in range_n_clusters) {
+  kmeans_model <- kmeans(reduced_features, centers = num_clusters,  nstart = 25)
+  
+  # Append SSD to the vector
+  ssd <- c(ssd, kmeans_model$tot.withinss)
+}
+
+# Plot the Elbow Method
+plot(range_n_clusters, ssd, type = 'b', pch = 19, col = 'blue', main = 'The Elbow Method', xlab = 'No of clusters "k"', ylab = 'Inertia')
+
+```
+
+```{r}
+#install.packages("dendextend")
+
+```
+
+```{r}
+# Assuming 'reduced_features' is your data frame
+library(dendextend)
+
+# Function to color branches
+color_branches_by_k <- function(dend, k) {
+  clusters <- cutree(dend, k)
+  cols <- rainbow(length(unique(clusters)))
+  dend <- color_branches(dend, k = k, col = cols[clusters])
+  return(dend)
+}
+
+# Subset of data
+data_subset <- reduced_features[1:10000, ]
+
+# Hierarchical clustering
+hc <- hclust(dist(data_subset), method = "ward.D2")
+dend <- as.dendrogram(hc)
+
+# Color branches by cluster (adjust 'k' as needed)
+dend_colored <- color_branches_by_k(dend, k = 3)
+
+# Plot the dendrogram
+plot(dend_colored, main = 'Colored Dendrogram', xlab = 'Customers', ylab = 'Euclidean distances')
+
+```
+
+```{r}
+# Assuming 'data_scaled' is your data frame
+set.seed(42)  # Set seed for reproducibility
+
+# KMeans algorithm settings
+kmeans_set <- list(init = "random", nstart = 25, iter.max = 300)
+
+# Perform KMeans clustering with 5 clusters
+kmeans_model <- kmeans(reduced_features, centers = 5, )
+
+# Get cluster assignments
+Y <- kmeans_model$cluster
+
+# Display cluster assignments
+
+
+```
+
+```{r}
+reduced_features['Label']=Y
+```
+
+```{r}
+install.packages("rgl")
+
+```
+
+```{r}
+# Assuming 'data_scaled' is your data frame
+# Assuming 'reduced_features' is your data frame
+library(rgl)
+
+# Sample 10,000 points from each cluster for better visualization
+set.seed(42)  # Set seed for reproducibility
+data_sampled <- reduced_features[sample(which(reduced_features$Label == 0), 1000, replace = TRUE), ]
+data_sampled <- rbind(data_sampled, reduced_features[sample(which(reduced_features$Label == 1), 1000, replace = TRUE), ])
+data_sampled <- rbind(data_sampled, reduced_features[sample(which(reduced_features$Label == 2), 1000, replace = TRUE), ])
+data_sampled <- rbind(data_sampled, reduced_features[sample(which(reduced_features$Label == 3), 1000, replace = TRUE), ])
+data_sampled <- rbind(data_sampled, reduced_features[sample(which(reduced_features$Label == 4), 1000, replace = TRUE), ])
+
+# Open 3D rgl window
+rgl.open()
+
+# Create 3D scatter plot
+plot3d(data_sampled$CustomerAge, data_sampled$Recency, data_sampled$Monetary,
+       col = c('blue', 'red', 'green', 'black', 'yellow')[data_sampled$Label + 1],
+       size = 2, type = 's',
+       xlab = "Age", ylab = "Recency", zlab = "Monetary Value")
+
+# Add labels
+text3d(data_sampled$CustomerAge, data_sampled$Recency, data_sampled$Monetary,
+       labels = data_sampled$Label, adj = c(-0.5, -0.5), cex = 0.8)
+
+# Rotate the plot for better view
+rgl.postscript('3D_Scatter_Plot.png', fmt = 'png', top = TRUE, left = TRUE)
+rgl.postscript('3D_Scatter_Plot.png', fmt = 'rgl')
+
+```
+
+```{r}
+# Assuming 'reduced_features' is your data frame
+library(rgl)
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Sample 10,000 points from each cluster for better visualization
+sample_from_cluster <- function(cluster_label, size) {
+  cluster_indices <- which(reduced_features$Label == cluster_label)
+  if (length(cluster_indices) < size) {
+    return(NULL)
+  }
+  sampled_indices <- sample(cluster_indices, size, replace = TRUE)
+  return(reduced_features[sampled_indices, ])
+}
+
+data_sampled <- do.call(rbind, lapply(0:4, sample_from_cluster, size = 10000))
+
+# Open 3D rgl window
+rgl.open()
+
+# Create 3D scatter plot
+plot3d(data_sampled$CustomerAge, data_sampled$Recency, data_sampled$Monetary,
+       col = c('blue', 'red', 'green', 'black', 'yellow')[data_sampled$Label + 1],
+       size = 2, type = 's',
+       xlab = "Age", ylab = "Recency", zlab = "Monetary Value")
+
+# Add labels
+text3d(data_sampled$CustomerAge, data_sampled$Recency, data_sampled$Monetary,
+       labels = data_sampled$Label, adj = c(-0.5, -0.5), cex = 0.8)
+
+# Rotate the plot for a better view
+rgl.postscript('3D_Scatter_Plot.png', fmt = 'png', top = TRUE, left = TRUE)
+rgl.postscript('3D_Scatter_Plot.png', fmt = 'rgl')
+
+```
+
+```{r}
+# Assuming 'reduced_features' is your data frame
+install.packages('plotly')
+library(plotly)
+
+# Define attributes, colors, and cluster names
+attributes <- c("Attribute1", "Attribute2", "Attribute3", "Attribute4", "Attribute5", "Attribute6", "Attribute7")
+colors <- c('purple', 'yellow', 'red', 'blue', 'magenta')
+clusters <- c('Cluster 1', 'Cluster 2', 'Cluster 3', 'Cluster 4', 'Cluster 5')
+
+# Create a matrix for radar plot data
+radar_data <- matrix(0, nrow = length(clusters), ncol = length(attributes))
+
+# Populate the matrix with mean values
+for (i in 1:length(clusters)) {
+  cluster_data <- reduced_features[reduced_features$Label == (i-1), attributes]
+  radar_data[i, ] <- colMeans(cluster_data, na.rm = TRUE)
+}
+
+# Create radar plot
+radar_plot <- plot_ly()
+
+for (i in 1:length(clusters)) {
+  radar_plot <- add_trace(radar_plot, type = 'scatterpolar',
+                          r = radar_data[i, ],
+                          theta = attributes,
+                          fill = 'toself',
+                          fillcolor = colors[i],
+                          opacity = 0.4,
+                          name = clusters[i])
+}
+
+# Update layout
+radar_plot <- layout(radar_plot, polar = list(radialaxis = list(visible = TRUE)),
+                     showlegend = TRUE, title = "Radar plot - Cluster attributes")
+
+# Show radar plot
+radar_plot
+
+```
+
+```{r}
+```
+
+```{r}
+```
+
+```{r}
+```
+
+```{r}
+```
